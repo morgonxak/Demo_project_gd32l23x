@@ -1,6 +1,6 @@
 /*!
-    \file    systick.c
-    \brief   the systick configuration file
+    \file    systick.h
+    \brief   the header file of systick
 
     \version 2026-02-02, V2.4.0, firmware for GD32L23x, add support for GD32L235
 */
@@ -31,53 +31,20 @@ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWIS
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
 OF SUCH DAMAGE.
 */
+#pragma once
 
-#include "gd32l23x.h"
-#include "systick.h"
+#include <stdint.h>
 
-static volatile uint32_t delay;
+#ifdef __cplusplus
+extern "C" {
+#endif
+/* configure systick */
+void systick_config(void);
+/* delay a time in milliseconds */
+void delay_1ms(uint32_t count);
+/* delay decrement */
+void delay_decrement(void);
 
-/*!
-    \brief      configure systick
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void systick_config(void)
-{
-    /* setup systick timer for 1000Hz interrupts */
-    if(SysTick_Config(SystemCoreClock / 1000U)) {
-        /* capture error */
-        while(1) {
-        }
-    }
-    /* configure the systick handler priority */
-    NVIC_SetPriority(SysTick_IRQn, 0x00U);
+#ifdef __cplusplus
 }
-
-/*!
-    \brief      delay a time in milliseconds
-    \param[in]  count: count in milliseconds
-    \param[out] none
-    \retval     none
-*/
-void delay_1ms(uint32_t count)
-{
-    delay = count;
-
-    while(0U != delay) {
-    }
-}
-
-/*!
-    \brief      delay decrement
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void delay_decrement(void)
-{
-    if(0U != delay) {
-        delay--;
-    }
-}
+#endif

@@ -1,6 +1,6 @@
 /*!
-    \file    gd32l23x_it.c
-    \brief   interrupt service routines
+    \file    gd32l23x_it.h
+    \brief   the header file of the ISR
 
     \version 2026-02-02, V2.4.0, firmware for GD32L23x, add support for GD32L235
 */
@@ -32,68 +32,20 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 OF SUCH DAMAGE.
 */
 
-#include "gd32l23x_it.h"
+#ifndef GD32L23X_IT_H
+#define GD32L23X_IT_H
 
-#ifdef GD32L235
-#define SRAM_ECC_ERROR_HANDLE(s)    do{}while(1)
-#endif /* GD32L235 */
-/*!
-    \brief      this function handles NMI exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void NMI_Handler(void)
-{
-#ifdef GD32L235
-    if(SET == syscfg_flag_get(SYSCFG_FLAG_SRAM_PCEF)) {
-        SRAM_ECC_ERROR_HANDLE("SRAM parity check error\r\n");
-    }else{
-#endif /* GD32L235 */
-        /* if NMI exception occurs, go to infinite loop */
-        /* HXTAL clock monitor NMI error or NMI pin error */
-        while(1) {
-        }
-#ifdef GD32L235
-    }
-#endif /* GD32L235 */
-}
+#include "gd32l23x.h"
 
-/*!
-    \brief      this function handles HardFault exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void HardFault_Handler(void)
-{
-    /* if Hard Fault exception occurs, go to infinite loop */
-    while(1) {
-    }
-}
+/* function declarations */
+/* this function handles NMI exception */
+void NMI_Handler(void);
+/* this function handles HardFault exception */
+void HardFault_Handler(void);
+/* this function handles SVC exception */
+void SVC_Handler(void);
+/* this function handles PendSV exception */
+void PendSV_Handler(void);
 
-/*!
-    \brief      this function handles SVC exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void SVC_Handler(void)
-{
-    /* if SVC exception occurs, go to infinite loop */
-    while(1) {
-    }
-}
 
-/*!
-    \brief      this function handles PendSV exception
-    \param[in]  none
-    \param[out] none
-    \retval     none
-*/
-void PendSV_Handler(void)
-{
-    /* if PendSV exception occurs, go to infinite loop */
-    while(1) {
-    }
-}
+#endif /* GD32L23X_IT_H */

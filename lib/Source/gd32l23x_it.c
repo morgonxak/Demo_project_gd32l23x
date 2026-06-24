@@ -1,6 +1,6 @@
 /*!
-    \file    gd32l23x_libopt.h
-    \brief   library optional for GD32L23x
+    \file    gd32l23x_it.c
+    \brief   interrupt service routines
 
     \version 2026-02-02, V2.4.0, firmware for GD32L23x, add support for GD32L235
 */
@@ -32,38 +32,74 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 OF SUCH DAMAGE.
 */
 
-#ifndef GD32L23X_LIBOPT_H
-#define GD32L23X_LIBOPT_H
+#include "gd32l23x_it.h"
+#include "systick.h"
 
-#include "gd32l23x_adc.h"
-#include "gd32l23x_crc.h"
-#include "gd32l23x_cau.h"
-#include "gd32l23x_dac.h"
-#include "gd32l23x_dbg.h"
-#include "gd32l23x_dma.h"
-#include "gd32l23x_exti.h"
-#include "gd32l23x_fmc.h"
-#include "gd32l23x_gpio.h"
-#include "gd32l23x_syscfg.h"
-#include "gd32l23x_i2c.h"
-#include "gd32l23x_fwdgt.h"
-#include "gd32l23x_pmu.h"
-#include "gd32l23x_rcu.h"
-#include "gd32l23x_ctc.h"
-#include "gd32l23x_rtc.h"
-#include "gd32l23x_spi.h"
-#include "gd32l23x_timer.h"
-#include "gd32l23x_usart.h"
-#include "gd32l23x_lpuart.h"
-#include "gd32l23x_wwdgt.h"
-#include "gd32l23x_misc.h"
-#include "gd32l23x_cmp.h"
-#include "gd32l23x_trng.h"
-#include "gd32l23x_slcd.h"
-#include "gd32l23x_lptimer.h"
-#include "gd32l23x_vref.h"
 #ifdef GD32L235
-#include "gd32l23x_can.h"
+#define SRAM_ECC_ERROR_HANDLE(s)    do{}while(1)
 #endif /* GD32L235 */
+/*!
+    \brief      this function handles NMI exception
+    \param[in]  none
+    \param[out] none
+    \retval     none
+*/
+void NMI_Handler(void)
+{
+#ifdef GD32L235
+    if(SET == syscfg_flag_get(SYSCFG_FLAG_SRAM_PCEF)) {
+        SRAM_ECC_ERROR_HANDLE("SRAM parity check error\r\n");
+    }else{
+#endif /* GD32L235 */
+        /* if NMI exception occurs, go to infinite loop */
+        /* HXTAL clock monitor NMI error or NMI pin error */
+        while(1) {
+        }
+#ifdef GD32L235
+    }
+#endif /* GD32L235 */
+}
 
-#endif /* GD32L23X_LIBOPT_H */
+/*!
+    \brief      this function handles HardFault exception
+    \param[in]  none
+    \param[out] none
+    \retval     none
+*/
+void HardFault_Handler(void)
+{
+    /* if Hard Fault exception occurs, go to infinite loop */
+    while(1) {
+    }
+}
+
+/*!
+    \brief      this function handles SVC exception
+    \param[in]  none
+    \param[out] none
+    \retval     none
+*/
+void SVC_Handler(void)
+{
+    /* if SVC exception occurs, go to infinite loop */
+    while(1) {
+    }
+}
+
+/*!
+    \brief      this function handles PendSV exception
+    \param[in]  none
+    \param[out] none
+    \retval     none
+*/
+void PendSV_Handler(void)
+{
+    /* if PendSV exception occurs, go to infinite loop */
+    while(1) {
+    }
+}
+
+void SysTick_Handler(void)
+{
+    delay_decrement();
+}
