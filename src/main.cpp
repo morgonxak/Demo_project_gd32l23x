@@ -1,178 +1,99 @@
-// #include "gd32l23x.h"
+#include "app_settings.hpp"
+#include "app_state.hpp"
+#include "led.hpp"
+#include "dac_noise.hpp"
+#include "gt_rx.hpp"
+#include "exti_pb7.hpp"
+#include "settings_flash.hpp"
 
-// #define GT_GD32_TIMER_CLOCK_HZ 64000000UL
-// #include "GyverTransfer/Transfer_GD32L23.h"
+int main(void) {
+    SystemCoreClockUpdate();
 
-// // ===================== LED PB1 =====================
+    led_init();
 
-// #define LED_GPIO_PORT   GPIOB
-// #define LED_GPIO_PIN    GPIO_PIN_1
-// #define LED_GPIO_CLK    RCU_GPIOB
+    // DAC0_OUT0 на PA4, LFSR noise, TIMER5 TRGO
+    dac_hw_init();
 
-// static void led_init(void) {
-//     rcu_periph_clock_enable(LED_GPIO_CLK);
+    // Загружаем сохранённые freq/band из Flash
+    SettingsFlash::init();
 
-//     gpio_mode_set(
-//         LED_GPIO_PORT,
-//         GPIO_MODE_OUTPUT,
-//         GPIO_PUPD_NONE,
-//         LED_GPIO_PIN
-//     );
+    if (SettingsFlash::has_valid_values()) {
+        const SettingsFlash::Values saved = SettingsFlash::current_values();
 
-//     gpio_output_options_set(
-//         LED_GPIO_PORT,
-//         GPIO_OTYPE_PP,
-//         GPIO_OSPEED_50MHZ,
-//         LED_GPIO_PIN
-//     );
+        Packet savedPacket {};
+        savedPacket.freq = saved.freq;
+        savedPacket.band = saved.band;
+        savedPacket.set = 0U;
 
-//     gpio_bit_reset(LED_GPIO_PORT, LED_GPIO_PIN);
-// }
+        lastPacket = savedPacket;
 
-// static void led_toggle(void) {
-//     static uint8_t state = 0;
-//     state = !state;
+        lastFreq = savedPacket.freq;
+        lastBand = savedPacket.band;
+        lastSet = savedPacket.set;
 
-//     if (state) {
-//         gpio_bit_set(LED_GPIO_PORT, LED_GPIO_PIN);
-//     } else {
-//         gpio_bit_reset(LED_GPIO_PORT, LED_GPIO_PIN);
-//     }
-// }
+        dac_apply_packet(savedPacket);
 
-// // ===================== GyverTransfer =====================
+        settingsFlashLoadOkCount++;
+    } else {
+        settingsFlashLoadBadCount++;
+    }
 
-// struct Packet {
-//     uint8_t freq;
-//     uint8_t band;
-//     uint8_t set;
-// };
+    // Запускаем микросекундный таймер
+    GtRx::timebase_init();
 
-// // Arduino D2 -> GD32 PB7
-// static constexpr uint8_t GT_PIN = GT_PB(7);
+    // Инициализируем внутреннее состояние библиотеки
+    GtRx::begin();
 
-// // Arduino: GyverTransfer<2, GT_TX, 1000> tx;
-// GyverTransfer<GT_PIN, GT_RX, 1000, 16> gt;
+    // Включаем EXTI на PB7
+    pb7_exti_init();
 
-// Packet lastPacket;
+    while (1) {
+        mainLoopCount++;
 
-// volatile uint8_t lastFreq = 0;
-// volatile uint8_t lastBand = 0;
-// volatile uint8_t lastSet = 0;
+        gtAvailable = GtRx::available();
 
-// volatile uint32_t mainLoopCount = 0;
-// volatile uint32_t gtEdgeIrqCount = 0;
-// volatile uint32_t gtByteCount = 0;
-// volatile uint32_t gtAvailable = 0;
-// volatile uint32_t gtPacketOkCount = 0;
-// volatile uint32_t gtPacketBadCount = 0;
+        // Packet = 3 байта: uint8_t freq + uint8_t band + uint8_t set
+        // CRC + ~CRC = 2 байта
+        // Итого ждём sizeof(Packet) + 2 байта
+        if (gtAvailable >= sizeof(Packet) + APP_GT_CRC_SIZE_BYTES) {
+            Packet data {};
 
-// // ===================== EXTI PB7 =====================
+            if (
+                (gtAvailable == sizeof(Packet) + APP_GT_CRC_SIZE_BYTES) &&
+                GtRx::read_data_crc(data)
+            ) {
+                lastPacket = data;
 
-// static void pb7_exti_init(void) {
-//     rcu_periph_clock_enable(RCU_GPIOB);
-//     rcu_periph_clock_enable(RCU_SYSCFG);
+                lastFreq = data.freq;
+                lastBand = data.band;
+                lastSet = data.set;
 
-//     // PB7 как вход с подтяжкой вверх
-//     gpio_mode_set(
-//         GPIOB,
-//         GPIO_MODE_INPUT,
-//         GPIO_PUPD_PULLUP,
-//         GPIO_PIN_7
-//     );
+                // Применяем freq/band к DAC
+                dac_apply_packet(data);
 
-//     // Привязываем EXTI7 именно к GPIOB
-//     syscfg_exti_line_config(EXTI_SOURCE_GPIOB, EXTI_SOURCE_PIN7);
+                // set == 255 — команда сохранить freq/band во Flash.
+                // Если такие freq/band уже сохранены, Flash не стирается и не пишется.
+                if (data.set == APP_PACKET_SET_SAVE_TO_FLASH) {
+                    const SettingsFlash::SaveResult saveResult =
+                        SettingsFlash::save_if_needed(data.freq, data.band);
 
-//     // EXTI7 по обоим фронтам
-//     exti_interrupt_flag_clear(EXTI_7);
-//     exti_init(EXTI_7, EXTI_INTERRUPT, EXTI_TRIG_BOTH);
-//     exti_interrupt_flag_clear(EXTI_7);
+                    if (saveResult == SettingsFlash::SaveResult::Saved) {
+                        settingsFlashSaveCount++;
+                    } else if (saveResult == SettingsFlash::SaveResult::NotNeeded) {
+                        settingsFlashSaveSkipCount++;
+                    } else {
+                        settingsFlashSaveErrorCount++;
+                    }
+                }
 
-//     // PB7 -> EXTI7 -> EXTI5_9_IRQn
-//     nvic_irq_enable(EXTI5_9_IRQn, 2U);
+                gtPacketOkCount++;
 
-//     __enable_irq();
-// }
-
-// // TIMER1 нужен библиотеке как micros()
-// extern "C" void TIMER1_IRQHandler(void) {
-//     gt_gd32_timebase_irq_handler();
-// }
-
-// // PB7 -> EXTI7 -> EXTI5_9_IRQHandler
-// extern "C" void EXTI5_9_IRQHandler(void) {
-//     if (exti_interrupt_flag_get(EXTI_7) != RESET) {
-//         exti_interrupt_flag_clear(EXTI_7);
-
-//         gtEdgeIrqCount++;
-
-//         // На каждый фронт отдаём управление декодеру GyverTransfer.
-//         // true вернётся только когда полностью принят 1 байт.
-//         if (gt.tickISR()) {
-//             gtByteCount++;
-//         }
-//     }
-// }
-// void dac_config(void)
-// {
-//     /* initialize DAC */
-//     dac_deinit(DAC0);
-//     /* DAC trigger config */
-//     dac_trigger_source_config(DAC0, DAC_OUT0, DAC_TRIGGER_T5_TRGO);
-//     /* DAC trigger enable */
-//     dac_trigger_enable(DAC0, DAC_OUT0);
-//     /* DAC wave mode config */
-//     dac_wave_mode_config(DAC0, DAC_OUT0, DAC_WAVE_MODE_LFSR);
-//     dac_lfsr_noise_config(DAC0, DAC_OUT0, DAC_LFSR_BITS10_0);
-
-//     /* DAC enable */
-//     dac_enable(DAC0, DAC_OUT0);
-//     dac_data_set(DAC0, DAC_OUT0, DAC_ALIGN_12B_R, 0x7F0);
-// }
-
-// // ===================== main =====================
-
-// int main(void) {
-//     SystemCoreClockUpdate();
-
-//     led_init();
-
-//     // Запускаем микросекундный таймер
-//     gt_gd32_timebase_init();
-
-//     // Инициализируем внутреннее состояние библиотеки и PB7
-//     gt.begin();
-
-//     // Включаем EXTI на PB7
-//     pb7_exti_init();
-
-//     while (1) {
-//         mainLoopCount++;
-
-//         gtAvailable = gt.available();
-
-//         // Packet = 3 байта
-//         // CRC + ~CRC = 2 байта
-//         // Итого ждём 5 байт
-//         if (gtAvailable >= sizeof(Packet) + 2U) {
-//             Packet data;
-
-//             if ((gtAvailable == sizeof(Packet) + 2U) && gt.readDataCRC(data)) {
-//                 lastPacket = data;
-
-//                 lastFreq = data.freq;
-//                 lastBand = data.band;
-//                 lastSet = data.set;
-
-//                 gtPacketOkCount++;
-
-//                 // Светодиод мигает только при правильном CRC-пакете
-//                 led_toggle();
-//             } else {
-//                 gtPacketBadCount++;
-//                 gt.clearBuffer();
-//             }
-//         }
-//     }
-// }
+                // Светодиод мигает только при правильном CRC-пакете
+                led_toggle();
+            } else {
+                gtPacketBadCount++;
+                GtRx::clear_buffer();
+            }
+        }
+    }
+}
